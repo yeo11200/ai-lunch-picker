@@ -193,12 +193,12 @@ export const handleGenerateRecommendations = async (
     };
   });
 
-  // 추천 4개 외의 "둘러보기" 후보: 450m 통과한 나머지 후보 전부.
+  // 추천 4개 외의 "사이드 추천" 후보: 450m 통과한 나머지 후보 중 상위 몇 개.
   // AI 호출 없이 점수/태그만 부여하므로 비용 0.
   const recommendedIds = new Set(recommendations.map((candidate) => candidate.id));
   const browseCandidates = scoredCandidates
     .filter((candidate) => !recommendedIds.has(candidate.id))
-    .slice(0, 24)
+    .slice(0, 8)
     .map((candidate) => ({
       ...candidate,
       aiSummary: null,
@@ -206,8 +206,8 @@ export const handleGenerateRecommendations = async (
       caution: null,
     }));
 
-  // 추천 Top 4만 저장 (투표 가능 후보). 둘러보기는 응답에만 포함시키는 ephemeral 데이터.
-  await handleSaveRestaurantCandidates(sessionId, recommendations);
+  // Top 4와 사이드 추천을 함께 저장해 새로고침 후에도 사이드 후보가 유지되게 한다.
+  await handleSaveRestaurantCandidates(sessionId, [...recommendations, ...browseCandidates]);
 
   if (aiResult.errorMessage) {
     messages.push(aiResult.errorMessage);

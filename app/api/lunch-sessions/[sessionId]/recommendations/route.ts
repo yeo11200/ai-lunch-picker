@@ -9,11 +9,12 @@ interface RouteContext {
 
 export async function GET(_request: Request, context: RouteContext) {
   const { sessionId } = await context.params;
+  const candidates = await handleGetRestaurantCandidates(sessionId);
 
   return Response.json({
     sessionId,
-    recommendations: await handleGetRestaurantCandidates(sessionId),
-    browseCandidates: [],
+    recommendations: candidates.filter((candidate) => candidate.aiReason).slice(0, 4),
+    browseCandidates: candidates.filter((candidate) => !candidate.aiReason),
   });
 }
 

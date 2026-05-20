@@ -192,10 +192,10 @@ export function LunchApp() {
               </div>
             </div>
             <CandidateList candidates={candidates} myRestaurantId={myRestaurantId} votingDisabled={!canVote} onVote={handleVote} />
-            <BrowseList candidates={browseCandidates} />
           </section>
 
           <aside style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
+            <BrowseList candidates={browseCandidates} />
             <VotePanel
               voteState={voteState}
               revealAt={session?.voteRevealAt ?? null}

@@ -10,14 +10,14 @@ export function BrowseList({ candidates }: BrowseListProps) {
   }
 
   return (
-    <section className="panel" style={{ marginTop: 16 }}>
+    <section className="panel side-recommendations">
       <div className="panel-header">
-        <strong>더 둘러보기 (450m 이내 전체)</strong>
+        <strong>사이드 추천</strong>
         <span className="tag">{candidates.length}개</span>
       </div>
       <div className="panel-body">
         <p className="muted" style={{ marginTop: 0 }}>
-          AI 추천 이유 없이 점수/태그만 매겨진 후보입니다. 다시 추천을 누르면 이 중에서 4개가 뽑힐 수 있습니다.
+          메인 4개에는 들지 않았지만 거리, 예산, 제로페이 가능성을 기준으로 같이 볼 만한 식당입니다.
         </p>
         <ul className="browse-list">
           {candidates.map((candidate) => {

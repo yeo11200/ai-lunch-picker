@@ -102,8 +102,9 @@ button:disabled {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.62fr);
   gap: 18px;
+  align-items: start;
 }
 
 .metrics {
@@ -297,9 +298,9 @@ button:disabled {
 
 .browse-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) auto;
-  align-items: center;
-  gap: 12px;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -332,7 +333,7 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .browse-link {
@@ -343,7 +344,7 @@ button:disabled {
 
 .browse-links {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
@@ -370,17 +371,6 @@ button:disabled {
   color: var(--muted);
 }
 
-@media (max-width: 720px) {
-  .browse-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .browse-tags {
-    justify-content: flex-start;
-  }
-}
-
 .result-list {
   display: grid;
   gap: 10px;
@@ -396,7 +386,7 @@ button:disabled {
 
 @media (max-width: 860px) {
   .app-shell {
-    padding: 28px 16px 40px;
+    padding: 24px 14px 40px;
   }
 
   .top-bar,
@@ -439,11 +429,53 @@ button:disabled {
     font-size: 16px;
   }
 
+  .actions {
+    align-items: stretch;
+  }
+
+  .actions .button {
+    width: 100%;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
   .page-title {
     font-size: 30px;
   }
 
   .page-subtitle {
     font-size: 15px;
+  }
+}
+
+@media (max-width: 560px) {
+  .app-shell {
+    padding-inline: 10px;
+  }
+
+  .panel-header,
+  .panel-body {
+    padding: 14px;
+  }
+
+  .candidate-card {
+    padding: 16px;
+  }
+
+  .candidate-title {
+    font-size: 20px;
+  }
+
+  .candidate-meta,
+  .candidate-extra,
+  .browse-tags,
+  .browse-links {
+    gap: 6px;
+  }
+
+  .tag,
+  .extra-chip {
+    max-width: 100%;
+    white-space: normal;
   }
 }
