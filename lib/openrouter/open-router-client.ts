@@ -113,8 +113,10 @@ const handleCallOpenRouter = async (
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        // 우선순위: OPENROUTER_APP_URL → VERCEL_URL (Vercel 자동주입) → 로컬 placeholder
+        // 빈 string("")도 fallback 되도록 ?? 대신 || 사용
         'HTTP-Referer':
-          process.env.OPENROUTER_APP_URL ??
+          (process.env.OPENROUTER_APP_URL || '').trim() ||
           (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://ai-lunch-picker.local'),
         'X-Title': process.env.OPENROUTER_APP_TITLE ?? 'AI Lunch Picker',
       },
