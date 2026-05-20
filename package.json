@@ -1,0 +1,40 @@
+{
+  "name": "ai-lunch-picker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:apply": "node scripts/apply-supabase-schema.mjs",
+    "db:check": "node scripts/check-supabase-schema.mjs",
+    "base:sync": "node scripts/sync-base-location.mjs",
+    "db:copy": "node scripts/copy-to-clipboard.mjs supabase/schema.sql --open-sql-editor",
+    "db:rls": "node scripts/copy-to-clipboard.mjs supabase/rls-policies.sql --open-sql-editor",
+    "db:cols": "node scripts/copy-to-clipboard.mjs supabase/column-patch.sql --open-sql-editor",
+    "vercel:env": "node scripts/print-vercel-env.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.86.0",
+    "@tanstack/react-query": "^5.90.11",
+    "next": "^16.0.10",
+    "pg": "^8.16.3",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

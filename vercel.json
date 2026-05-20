@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["icn1"],
+  "framework": "nextjs",
+  "functions": {
+    "app/api/lunch-sessions/[sessionId]/recommendations/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/lunch-sessions/[sessionId]/reveal/route.ts": {
+      "maxDuration": 20
+    }
+  }
+}

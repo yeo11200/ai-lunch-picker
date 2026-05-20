@@ -1,0 +1,24 @@
+node_modules/
+.next/
+out/
+
+# 모든 .env* 차단, example 파일만 commit 허용
+.env*
+!.env*.example
+
+# 디버그/임시 산출물
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.cache/
+.vercel/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# 사용자별 로컬 스크립트 (probe-* 등 디버그용)
+scripts/*.local.mjs
