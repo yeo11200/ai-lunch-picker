@@ -15,15 +15,15 @@ interface AiResult {
   modelUsed: string | null;
 }
 
+// Vercel maxDuration 60초 안에서 안전. 너무 많은 모델을 chain하면 worst case에 timeout 발생.
 const DEFAULT_FREE_MODEL_CHAIN = [
   'meta-llama/llama-3.3-70b-instruct:free',
   'z-ai/glm-4.5-air:free',
-  'qwen/qwen3-next-80b-a3b-instruct:free',
-  'openai/gpt-oss-120b:free',
   'openai/gpt-oss-20b:free',
-  'deepseek/deepseek-v4-flash:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
 ];
+
+const PER_MODEL_TIMEOUT_MS = 12_000;
+const OVERALL_TIMEOUT_MS = 25_000;
 
 const handleGetModelChain = (): string[] => {
   const fromEnv = process.env.OPENROUTER_MODEL;
@@ -99,49 +99,66 @@ const handleCallOpenRouter = async (
   model: string,
   systemPrompt: string,
   userPrompt: string,
+  signal: AbortSignal,
 ): Promise<{ ok: true; content: string } | { ok: false; status: number; message: string }> => {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer':
-        process.env.OPENROUTER_APP_URL ??
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://ai-lunch-picker.local'),
-      'X-Title': process.env.OPENROUTER_APP_TITLE ?? 'AI Lunch Picker',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.2,
-      max_tokens: 800,
-    }),
-  });
+  // 모델별 12초 timeout + 외부 signal (전체 25초) 결합
+  const perModelController = new AbortController();
+  const timeoutId = setTimeout(() => perModelController.abort(new Error('per-model timeout')), PER_MODEL_TIMEOUT_MS);
+  signal.addEventListener('abort', () => perModelController.abort(signal.reason), { once: true });
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    return { ok: false, status: response.status, message: `${response.status} ${errorText.slice(0, 200)}` };
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      signal: perModelController.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer':
+          process.env.OPENROUTER_APP_URL ??
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://ai-lunch-picker.local'),
+        'X-Title': process.env.OPENROUTER_APP_TITLE ?? 'AI Lunch Picker',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 800,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      return { ok: false, status: response.status, message: `${response.status} ${errorText.slice(0, 200)}` };
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      error?: { message?: string; code?: number };
+    };
+
+    if (data.error) {
+      return { ok: false, status: data.error.code ?? 500, message: data.error.message ?? 'OpenRouter error' };
+    }
+
+    const content = data.choices?.[0]?.message?.content?.trim() ?? '';
+
+    if (!content) {
+      return { ok: false, status: 502, message: 'empty response content' };
+    }
+
+    return { ok: true, content };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 504,
+      message: error instanceof Error ? error.message : 'OpenRouter network error',
+    };
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    error?: { message?: string; code?: number };
-  };
-
-  if (data.error) {
-    return { ok: false, status: data.error.code ?? 500, message: data.error.message ?? 'OpenRouter error' };
-  }
-
-  const content = data.choices?.[0]?.message?.content?.trim() ?? '';
-
-  if (!content) {
-    return { ok: false, status: 502, message: 'empty response content' };
-  }
-
-  return { ok: true, content };
 };
 
 export const handleGenerateAiRecommendations = async (
@@ -165,8 +182,18 @@ export const handleGenerateAiRecommendations = async (
   const modelChain = handleGetModelChain();
   const errors: string[] = [];
 
+  // 전체 chain hard timeout — Vercel maxDuration 60s 안에 무조건 끝나도록
+  const overallController = new AbortController();
+  const overallTimeout = setTimeout(() => overallController.abort(new Error('overall timeout')), OVERALL_TIMEOUT_MS);
+
+  try {
   for (const model of modelChain) {
-    const result = await handleCallOpenRouter(apiKey, model, systemPrompt, context);
+    if (overallController.signal.aborted) {
+      errors.push(`${model}: chain timeout 초과로 시도 중단`);
+      break;
+    }
+
+    const result = await handleCallOpenRouter(apiKey, model, systemPrompt, context, overallController.signal);
 
     if (!result.ok) {
       errors.push(`${model}: ${result.message}`);
@@ -200,4 +227,7 @@ export const handleGenerateAiRecommendations = async (
     errorMessage: `OpenRouter 무료 모델 호출에 모두 실패해 룰 기반 추천을 사용했습니다. (${errors.slice(0, 3).join(' / ')})`,
     modelUsed: null,
   };
+  } finally {
+    clearTimeout(overallTimeout);
+  }
 };

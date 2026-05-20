@@ -54,9 +54,54 @@ interface GenerateOptions {
   force?: boolean;
 }
 
+// 같은 sessionId 의 추천 생성이 동시에 호출되면 두 번째는 진행 중인 promise 결과를 share.
+// Vercel timeout 후 사용자가 새로고침/재클릭해도 중복 INSERT 가 안 일어나게 함.
+const inflightBySession = new Map<string, Promise<RecommendationResponse>>();
+const RECOMMENDATION_DEADLINE_MS = 50_000;
+
+const handleSelectExisting = (sessionId: string, existing: RestaurantCandidate[]): RecommendationResponse => {
+  return {
+    sessionId,
+    candidateCount: existing.length,
+    filteredCount: existing.length,
+    recommendations: existing.filter((candidate) => candidate.aiReason).slice(0, 4),
+    browseCandidates: existing.filter((candidate) => !candidate.aiReason),
+    fallbackUsed: false,
+    messages: ['오늘 추천은 이미 생성되어 있습니다. 다시 뽑으려면 "다시 추천" 버튼을 사용하세요.'],
+  };
+};
+
 export const handleGenerateRecommendations = async (
   sessionId: string,
   options: GenerateOptions = {},
+): Promise<RecommendationResponse> => {
+  // 동시 호출 직렬화: 진행 중인 호출이 있으면 그 promise share
+  const existingInflight = inflightBySession.get(sessionId);
+  if (existingInflight) {
+    return existingInflight;
+  }
+
+  // Vercel maxDuration 60s 안에 무조건 끝나도록 50초 hard deadline.
+  // 초과 시 throw 해서 클라이언트가 자연스럽게 에러 받게 함 (504 같은).
+  const work = handleGenerateRecommendationsInternal(sessionId, options);
+  const deadline = new Promise<RecommendationResponse>((_resolve, reject) => {
+    setTimeout(
+      () => reject(new Error('추천 생성이 50초 안에 끝나지 않아 중단됐습니다. 잠시 후 다시 시도해주세요.')),
+      RECOMMENDATION_DEADLINE_MS,
+    );
+  });
+
+  const racing = Promise.race([work, deadline]).finally(() => {
+    inflightBySession.delete(sessionId);
+  });
+
+  inflightBySession.set(sessionId, racing);
+  return racing;
+};
+
+const handleGenerateRecommendationsInternal = async (
+  sessionId: string,
+  options: GenerateOptions,
 ): Promise<RecommendationResponse> => {
   const session = await handleGetLunchSession(sessionId);
 
@@ -69,15 +114,7 @@ export const handleGenerateRecommendations = async (
     const existing = await handleGetRestaurantCandidates(sessionId);
 
     if (existing.length > 0) {
-      return {
-        sessionId,
-        candidateCount: existing.length,
-        filteredCount: existing.length,
-        recommendations: existing.filter((candidate) => candidate.aiReason).slice(0, 4),
-        browseCandidates: existing.filter((candidate) => !candidate.aiReason),
-        fallbackUsed: false,
-        messages: ['오늘 추천은 이미 생성되어 있습니다. 다시 뽑으려면 "다시 추천" 버튼을 사용하세요.'],
-      };
+      return handleSelectExisting(sessionId, existing);
     }
   }
 

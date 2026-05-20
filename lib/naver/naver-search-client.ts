@@ -62,8 +62,9 @@ const SAMPLE_SEARCH_ITEMS: NaverLocalSearchItem[] = [
 
 const NAVER_DISPLAY_PER_QUERY = 5;
 const NAVER_CONCURRENCY = 4;
-const NAVER_RETRY_LIMIT = 3;
-const NAVER_RETRY_BASE_MS = 350;
+const NAVER_RETRY_LIMIT = 2;
+const NAVER_RETRY_BASE_MS = 300;
+const NAVER_PER_QUERY_TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 60_000;
 
 interface CachedSearch {
@@ -128,6 +129,9 @@ const handleFetchOneQueryRaw = async (
   clientId: string,
   clientSecret: string,
 ): Promise<{ items: NaverLocalSearchItem[]; status: number | null; error: string | null }> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(new Error('naver query timeout')), NAVER_PER_QUERY_TIMEOUT_MS);
+
   try {
     const url = new URL('https://openapi.naver.com/v1/search/local.json');
     url.searchParams.set('query', query);
@@ -135,6 +139,7 @@ const handleFetchOneQueryRaw = async (
     url.searchParams.set('sort', 'random');
 
     const response = await fetch(url, {
+      signal: controller.signal,
       headers: {
         'X-Naver-Client-Id': clientId,
         'X-Naver-Client-Secret': clientSecret,
@@ -154,6 +159,8 @@ const handleFetchOneQueryRaw = async (
       status: null,
       error: error instanceof Error ? error.message : '네트워크 실패',
     };
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
 
