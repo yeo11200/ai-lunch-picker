@@ -12,6 +12,7 @@ import { handleGeocodeAddress } from '@/lib/naver/naver-geocoding-client';
 import { handleSearchNaverLocalRestaurants, type NaverLocalSearchItem } from '@/lib/naver/naver-search-client';
 import { handleGenerateAiRecommendations } from '@/lib/openrouter/open-router-client';
 import { handleCalculateDistanceMeters, handleIsWithinRadius } from './distance';
+import { handleIsLunchCandidateCategory } from './category-filter';
 import { handleSampleDiverseCandidates } from './diverse-sampler';
 import { handleEstimatePrice } from './price-estimator';
 import { handleBuildRagContext } from './rag-context-builder';
@@ -127,8 +128,14 @@ const handleGenerateRecommendationsInternal = async (
   const candidates: RestaurantCandidate[] = [];
 
   let geocodingErrorCount = 0;
+  let nonRestaurantCount = 0;
 
   for (const item of dedupedItems) {
+    if (!handleIsLunchCandidateCategory({ name: item.title, category: item.category })) {
+      nonRestaurantCount += 1;
+      continue;
+    }
+
     const address = item.roadAddress || item.address;
     const localCoordinate = handleParseNaverLocalCoordinate(item.mapx, item.mapy);
     const geocoded = localCoordinate ?? (await handleGeocodeAddress(address));
@@ -256,6 +263,10 @@ const handleGenerateRecommendationsInternal = async (
 
   if (geocodingErrorCount > 0) {
     messages.push(`${geocodingErrorCount}개 식당은 좌표를 확인할 수 없어 제외했습니다.`);
+  }
+
+  if (nonRestaurantCount > 0) {
+    messages.push(`${nonRestaurantCount}개 후보는 식당 카테고리가 아니어서 제외했습니다.`);
   }
 
   if (recommendations.length < 3) {
