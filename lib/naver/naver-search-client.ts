@@ -61,10 +61,11 @@ const SAMPLE_SEARCH_ITEMS: NaverLocalSearchItem[] = [
 ];
 
 const NAVER_DISPLAY_PER_QUERY = 5;
-const NAVER_CONCURRENCY = 4;
-const NAVER_RETRY_LIMIT = 2;
-const NAVER_RETRY_BASE_MS = 300;
-const NAVER_PER_QUERY_TIMEOUT_MS = 5000;
+const DEFAULT_NAVER_CONCURRENCY = 1;
+const DEFAULT_NAVER_RETRY_LIMIT = 3;
+const DEFAULT_NAVER_RETRY_BASE_MS = 1_000;
+const DEFAULT_NAVER_REQUEST_DELAY_MS = 450;
+const DEFAULT_NAVER_PER_QUERY_TIMEOUT_MS = 6_000;
 const CACHE_TTL_MS = 60_000;
 
 interface CachedSearch {
@@ -105,6 +106,26 @@ const handleSleep = (ms: number) => {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 };
 
+const handleReadPositiveInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
+};
+
+const handleGetNaverSearchConfig = () => {
+  return {
+    concurrency: handleReadPositiveInt(process.env.NAVER_SEARCH_CONCURRENCY, DEFAULT_NAVER_CONCURRENCY),
+    retryLimit: handleReadPositiveInt(process.env.NAVER_SEARCH_RETRY_LIMIT, DEFAULT_NAVER_RETRY_LIMIT),
+    retryBaseMs: handleReadPositiveInt(process.env.NAVER_SEARCH_RETRY_BASE_MS, DEFAULT_NAVER_RETRY_BASE_MS),
+    requestDelayMs: handleReadPositiveInt(process.env.NAVER_SEARCH_REQUEST_DELAY_MS, DEFAULT_NAVER_REQUEST_DELAY_MS),
+    perQueryTimeoutMs: handleReadPositiveInt(process.env.NAVER_SEARCH_QUERY_TIMEOUT_MS, DEFAULT_NAVER_PER_QUERY_TIMEOUT_MS),
+  };
+};
+
 const handleReadCache = (query: string): NaverLocalSearchItem[] | null => {
   const cached = queryCache.get(query);
 
@@ -128,9 +149,10 @@ const handleFetchOneQueryRaw = async (
   query: string,
   clientId: string,
   clientSecret: string,
-): Promise<{ items: NaverLocalSearchItem[]; status: number | null; error: string | null }> => {
+  timeoutMs: number,
+): Promise<{ items: NaverLocalSearchItem[]; status: number | null; error: string | null; retryAfterMs: number | null }> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(new Error('naver query timeout')), NAVER_PER_QUERY_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(new Error('naver query timeout')), timeoutMs);
 
   try {
     const url = new URL('https://openapi.naver.com/v1/search/local.json');
@@ -148,16 +170,24 @@ const handleFetchOneQueryRaw = async (
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      return { items: [], status: response.status, error: `${response.status}: ${text.slice(0, 120)}` };
+      const retryAfter = response.headers.get('retry-after');
+      const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : null;
+      return {
+        items: [],
+        status: response.status,
+        error: `${response.status}: ${text.slice(0, 120)}`,
+        retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : null,
+      };
     }
 
     const data = (await response.json()) as { items?: NaverLocalSearchItem[] };
-    return { items: data.items ?? [], status: response.status, error: null };
+    return { items: data.items ?? [], status: response.status, error: null, retryAfterMs: null };
   } catch (error) {
     return {
       items: [],
       status: null,
       error: error instanceof Error ? error.message : '네트워크 실패',
+      retryAfterMs: null,
     };
   } finally {
     clearTimeout(timeoutId);
@@ -168,6 +198,7 @@ const handleFetchOneQuery = async (
   query: string,
   clientId: string,
   clientSecret: string,
+  config: ReturnType<typeof handleGetNaverSearchConfig>,
 ): Promise<{ items: NaverLocalSearchItem[]; error: string | null; fromCache: boolean }> => {
   const cached = handleReadCache(query);
 
@@ -177,8 +208,8 @@ const handleFetchOneQuery = async (
 
   let lastError: string | null = null;
 
-  for (let attempt = 0; attempt < NAVER_RETRY_LIMIT; attempt += 1) {
-    const result = await handleFetchOneQueryRaw(query, clientId, clientSecret);
+  for (let attempt = 0; attempt < config.retryLimit; attempt += 1) {
+    const result = await handleFetchOneQueryRaw(query, clientId, clientSecret, config.perQueryTimeoutMs);
 
     if (result.items.length > 0 || (result.status && result.status >= 200 && result.status < 300)) {
       handleWriteCache(query, result.items);
@@ -188,7 +219,8 @@ const handleFetchOneQuery = async (
     lastError = result.error;
 
     if (result.status === 429) {
-      const backoff = NAVER_RETRY_BASE_MS * Math.pow(2, attempt) + Math.random() * 150;
+      const jitter = Math.floor(Math.random() * 300);
+      const backoff = result.retryAfterMs ?? config.retryBaseMs * Math.pow(2, attempt) + jitter;
       await handleSleep(backoff);
       continue;
     }
@@ -206,6 +238,7 @@ const handleFetchOneQuery = async (
 const handleRunWithConcurrency = async <T>(
   tasks: Array<() => Promise<T>>,
   concurrency: number,
+  requestDelayMs: number,
 ): Promise<T[]> => {
   const results: T[] = new Array(tasks.length);
   let cursor = 0;
@@ -217,6 +250,10 @@ const handleRunWithConcurrency = async <T>(
 
       if (taskIndex >= tasks.length) {
         return;
+      }
+
+      if (taskIndex > 0 && requestDelayMs > 0) {
+        await handleSleep(requestDelayMs);
       }
 
       results[taskIndex] = await tasks[taskIndex]();
@@ -245,10 +282,11 @@ export const handleSearchNaverLocalRestaurants = async (): Promise<{
   }
 
   const queries = getSearchQueriesForToday();
+  const config = handleGetNaverSearchConfig();
   const tasks = queries.map(
-    (query) => () => handleFetchOneQuery(query, clientId, clientSecret),
+    (query) => () => handleFetchOneQuery(query, clientId, clientSecret, config),
   );
-  const responses = await handleRunWithConcurrency(tasks, NAVER_CONCURRENCY);
+  const responses = await handleRunWithConcurrency(tasks, config.concurrency, config.requestDelayMs);
 
   const errors = responses.map((response) => response.error).filter((value): value is string => Boolean(value));
   const items = responses

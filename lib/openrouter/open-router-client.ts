@@ -20,25 +20,48 @@ const DEFAULT_FREE_MODEL_CHAIN = [
   'meta-llama/llama-3.3-70b-instruct:free',
   'z-ai/glm-4.5-air:free',
   'openai/gpt-oss-20b:free',
+  'qwen/qwen3-next-80b-a3b-instruct:free',
+  'deepseek/deepseek-v4-flash:free',
 ];
 
-const PER_MODEL_TIMEOUT_MS = 12_000;
-const OVERALL_TIMEOUT_MS = 25_000;
+const DEFAULT_PER_MODEL_TIMEOUT_MS = 12_000;
+const DEFAULT_OVERALL_TIMEOUT_MS = 25_000;
 
-const handleGetModelChain = (): string[] => {
-  const fromEnv = process.env.OPENROUTER_MODEL;
-  const fromFallback = process.env.OPENROUTER_FALLBACK_MODELS;
+const handleReadPositiveInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
 
-  const primary = fromEnv && fromEnv.trim().length > 0 && fromEnv !== 'openrouter/auto' ? [fromEnv.trim()] : [];
-  const fallbacks = fromFallback
-    ? fromFallback
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
+};
+
+const handleSplitModelList = (value: string | undefined) => {
+  return value
+    ? value
         .split(',')
-        .map((value) => value.trim())
+        .map((model) => model.trim())
         .filter(Boolean)
     : [];
+};
 
-  const merged = [...primary, ...fallbacks, ...DEFAULT_FREE_MODEL_CHAIN];
-  return Array.from(new Set(merged));
+const handleGetModelChain = (): string[] => {
+  const fromFreeModels = handleSplitModelList(process.env.OPENROUTER_FREE_MODELS);
+  const fromModelChain = handleSplitModelList(process.env.OPENROUTER_MODEL_CHAIN);
+  const fromEnv = process.env.OPENROUTER_MODEL;
+  const fromFallback = handleSplitModelList(process.env.OPENROUTER_FALLBACK_MODELS);
+
+  const primary = fromEnv && fromEnv.trim().length > 0 && fromEnv !== 'openrouter/auto' ? [fromEnv.trim()] : [];
+  const allowPaidModels = process.env.OPENROUTER_ALLOW_PAID_MODELS === 'true';
+  const merged = [...fromFreeModels, ...fromModelChain, ...primary, ...fromFallback, ...DEFAULT_FREE_MODEL_CHAIN];
+  const uniqueModels = Array.from(new Set(merged));
+
+  if (allowPaidModels) {
+    return uniqueModels;
+  }
+
+  return uniqueModels.filter((model) => model.endsWith(':free'));
 };
 
 const handleStripCodeFence = (text: string): string => {
@@ -101,9 +124,10 @@ const handleCallOpenRouter = async (
   userPrompt: string,
   signal: AbortSignal,
 ): Promise<{ ok: true; content: string } | { ok: false; status: number; message: string }> => {
-  // 모델별 12초 timeout + 외부 signal (전체 25초) 결합
+  // 모델별 timeout + 외부 signal(전체 chain timeout)을 결합한다.
   const perModelController = new AbortController();
-  const timeoutId = setTimeout(() => perModelController.abort(new Error('per-model timeout')), PER_MODEL_TIMEOUT_MS);
+  const perModelTimeoutMs = handleReadPositiveInt(process.env.OPENROUTER_PER_MODEL_TIMEOUT_MS, DEFAULT_PER_MODEL_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => perModelController.abort(new Error('per-model timeout')), perModelTimeoutMs);
   signal.addEventListener('abort', () => perModelController.abort(signal.reason), { once: true });
 
   try {
@@ -186,7 +210,8 @@ export const handleGenerateAiRecommendations = async (
 
   // 전체 chain hard timeout — Vercel maxDuration 60s 안에 무조건 끝나도록
   const overallController = new AbortController();
-  const overallTimeout = setTimeout(() => overallController.abort(new Error('overall timeout')), OVERALL_TIMEOUT_MS);
+  const overallTimeoutMs = handleReadPositiveInt(process.env.OPENROUTER_OVERALL_TIMEOUT_MS, DEFAULT_OVERALL_TIMEOUT_MS);
+  const overallTimeout = setTimeout(() => overallController.abort(new Error('overall timeout')), overallTimeoutMs);
 
   try {
   for (const model of modelChain) {
