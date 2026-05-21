@@ -55,6 +55,13 @@ export function LunchApp() {
   const voteState = voteQuery.data ?? null;
   const myRestaurantId = voteState?.myVote?.restaurantId ?? null;
   const canVote = Boolean(userId && userName.trim() && sessionId && candidates.length > 0 && !voteState?.isRevealed);
+  const canRefreshRecommendations = Boolean(
+    sessionId &&
+      candidates.length > 0 &&
+      !createRecommendationsMutation.isPending &&
+      !voteState?.isRevealed &&
+      (voteState?.totalVoteCount ?? 0) === 0,
+  );
   const isLoading = sessionQuery.isLoading || createSessionMutation.isPending || createRecommendationsMutation.isPending;
   const statusLabel = useMemo(() => {
     if (!session) {
@@ -150,9 +157,13 @@ export function LunchApp() {
               </button>
               <button
                 className="button secondary"
-                disabled={!sessionId || candidates.length === 0 || createRecommendationsMutation.isPending}
+                disabled={!canRefreshRecommendations}
                 onClick={handleForceRefresh}
-                title="기존 추천을 지우고 새로 뽑습니다"
+                title={
+                  (voteState?.totalVoteCount ?? 0) > 0
+                    ? '투표가 시작된 뒤에는 추천 후보를 바꿀 수 없습니다.'
+                    : '기존 추천을 지우고 새로 뽑습니다'
+                }
               >
                 다시 추천 뽑기
               </button>
@@ -162,7 +173,7 @@ export function LunchApp() {
             </div>
             {candidates.length > 0 ? (
               <p className="muted" style={{ marginTop: 8 }}>
-                ℹ️ 오늘 추천이 이미 있습니다. 다른 사람이 이미 만든 추천을 함께 보고 있어요. 새로 뽑고 싶으면 "다시 추천 뽑기"를 누르세요.
+                ℹ️ 오늘 추천이 이미 있습니다. 다른 사람이 이미 만든 추천을 함께 보고 있어요. 투표가 시작되기 전까지만 다시 뽑을 수 있습니다.
               </p>
             ) : null}
 

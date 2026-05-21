@@ -5,6 +5,7 @@ import {
   handleGetLunchSession,
   handleGetRagContext,
   handleGetRestaurantCandidates,
+  handleGetVoteInputs,
   handleSaveRestaurantCandidates,
 } from '@/lib/lunch/lunch-repository';
 import { handleParseNaverLocalCoordinate } from '@/lib/naver/naver-coordinate';
@@ -108,6 +109,17 @@ const handleGenerateRecommendationsInternal = async (
 
   if (!session) {
     throw new Error('점심 세션을 찾을 수 없습니다.');
+  }
+
+  if (options.force) {
+    if (session.status === 'revealed') {
+      throw new Error('이미 결과가 공개된 세션은 다시 추천할 수 없습니다.');
+    }
+
+    const existingVotes = await handleGetVoteInputs(sessionId);
+    if (existingVotes.length > 0) {
+      throw new Error('투표가 시작된 세션은 다시 추천할 수 없습니다. 새 추천이 필요하면 새 세션을 만들어주세요.');
+    }
   }
 
   // 같은 세션에 이미 추천이 있고 force가 아니면 그대로 반환 (Naver/AI 재호출 방지)
