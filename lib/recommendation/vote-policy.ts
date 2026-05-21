@@ -3,6 +3,7 @@ import type { RevealedVoteResult, VoteInput, VoteState } from '@/features/lunch/
 interface BuildVoteStateInput {
   now: Date;
   revealAt: Date;
+  forceRevealed?: boolean;
   currentUserId: string;
   votes: VoteInput[];
 }
@@ -31,7 +32,7 @@ const handleBuildRevealedResults = (votes: VoteInput[]): RevealedVoteResult[] =>
 
 export const handleBuildVoteState = (input: BuildVoteStateInput): VoteState => {
   const myVote = input.votes.find((vote) => vote.userId === input.currentUserId) ?? null;
-  const isRevealed = handleIsVoteRevealed(input.now, input.revealAt);
+  const isRevealed = input.forceRevealed === true || handleIsVoteRevealed(input.now, input.revealAt);
   const totalVoteCount = input.votes.length;
   const currentUserVote = myVote ? { restaurantId: myVote.restaurantId } : null;
 

@@ -223,7 +223,7 @@ export function LunchApp() {
                   <div className="result-list">
                     {sessionQuery.data.recentResults.map(
                       (result: { sessionId: string; restaurantName: string; visitedAt: string; category: string | null }) => (
-                        <div className="result-row" key={result.sessionId}>
+                        <div className="result-row" key={`${result.sessionId}-${result.restaurantName}-${result.visitedAt}`}>
                           <span>{result.visitedAt}</span>
                           <strong>{result.restaurantName}</strong>
                         </div>

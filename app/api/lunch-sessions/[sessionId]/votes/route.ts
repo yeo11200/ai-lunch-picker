@@ -30,6 +30,7 @@ export async function GET(request: Request, context: RouteContext) {
     handleBuildVoteState({
       now: new Date(),
       revealAt: new Date(session.voteRevealAt),
+      forceRevealed: session.status === 'revealed',
       currentUserId,
       votes: await handleGetVoteInputs(sessionId),
     }),

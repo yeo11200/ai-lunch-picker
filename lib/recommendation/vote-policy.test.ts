@@ -49,4 +49,18 @@ describe('vote policy', () => {
       voters: ['진섭', '민수'],
     });
   });
+
+  it('reveals vote counts when session was manually revealed before reveal time', () => {
+    const state = handleBuildVoteState({
+      now: new Date('2026-05-19T02:19:59.000Z'),
+      revealAt: new Date(revealAt),
+      forceRevealed: true,
+      currentUserId: 'u1',
+      votes: [
+        { restaurantId: 'r1', restaurantName: '백반집', userId: 'u1', userName: '진섭' },
+      ],
+    });
+
+    expect(state.isRevealed).toBe(true);
+  });
 });

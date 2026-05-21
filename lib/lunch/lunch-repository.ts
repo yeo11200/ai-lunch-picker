@@ -480,6 +480,18 @@ export const handleRevealLunchSession = async (sessionId: string) => {
   }, {});
   const selectedRestaurantId = Object.entries(counts).sort((left, right) => right[1] - left[1])[0]?.[0] ?? candidates[0]?.id ?? null;
   const selected = candidates.find((candidate) => candidate.id === selectedRestaurantId) ?? null;
+
+  if (session.status === 'revealed') {
+    return {
+      session: {
+        ...session,
+        status: 'revealed' as const,
+        selectedRestaurantId: session.selectedRestaurantId ?? selectedRestaurantId,
+      },
+      selectedRestaurant: candidates.find((candidate) => candidate.id === session.selectedRestaurantId) ?? selected,
+    };
+  }
+
   const supabase = await handlePrepareSupabase();
 
   if (supabase) {
@@ -489,13 +501,17 @@ export const handleRevealLunchSession = async (sessionId: string) => {
       .eq('id', sessionId);
 
     if (selected) {
-      await supabase.from('visit_histories').insert({
-        session_id: sessionId,
-        restaurant_id: selected.id,
-        restaurant_name: selected.name,
-        category: selected.category,
-        visited_at: session.sessionDate,
-      });
+      const existingVisit = await supabase.from('visit_histories').select('id').eq('session_id', sessionId).limit(1).maybeSingle();
+
+      if (!existingVisit.data) {
+        await supabase.from('visit_histories').insert({
+          session_id: sessionId,
+          restaurant_id: selected.id,
+          restaurant_name: selected.name,
+          category: selected.category,
+          visited_at: session.sessionDate,
+        });
+      }
     }
   } else {
     session.status = 'revealed';
@@ -586,13 +602,24 @@ export const handleGetRecentResults = async () => {
         throw result.error;
       }
 
-      return result.data.map((history) => ({
+      const seenSessionIds = new Set<string>();
+
+      return result.data.flatMap((history) => {
+        const sessionId = String(history.session_id);
+
+        if (seenSessionIds.has(sessionId)) {
+          return [];
+        }
+
+        seenSessionIds.add(sessionId);
+        return [{
         sessionId: String(history.session_id),
         restaurantId: String(history.restaurant_id),
         restaurantName: String(history.restaurant_name),
         category: history.category ? String(history.category) : null,
         visitedAt: String(history.visited_at),
-      }));
+        }];
+      });
     } catch (error) {
       console.warn('[lunch] supabase get-recent-results failed, falling back to memory:', error);
       handleMarkSupabaseUnready();
