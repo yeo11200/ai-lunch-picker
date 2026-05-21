@@ -23,7 +23,8 @@ export async function POST(request: Request, context: RouteContext) {
     const { sessionId } = await context.params;
     const url = new URL(request.url);
     const force = url.searchParams.get('force') === 'true';
-    const result = await handleGenerateRecommendations(sessionId, { force });
+    const requestedByName = url.searchParams.get('requestedByName') ?? '';
+    const result = await handleGenerateRecommendations(sessionId, { force, requestedByName });
 
     return Response.json(result);
   } catch (error) {

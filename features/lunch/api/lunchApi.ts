@@ -21,9 +21,23 @@ export const lunchApi = {
 
     return response.json();
   },
-  handleCreateRecommendations: async (sessionId: string, force = false): Promise<RecommendationResponse> => {
-    const query = force ? '?force=true' : '';
-    const response = await fetch(`/api/lunch-sessions/${sessionId}/recommendations${query}`, {
+  handleCreateRecommendations: async (
+    sessionId: string,
+    force = false,
+    requestedByName = '',
+  ): Promise<RecommendationResponse> => {
+    const query = new URLSearchParams();
+
+    if (force) {
+      query.set('force', 'true');
+    }
+
+    if (requestedByName.trim()) {
+      query.set('requestedByName', requestedByName.trim());
+    }
+
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    const response = await fetch(`/api/lunch-sessions/${sessionId}/recommendations${queryString}`, {
       method: 'POST',
     });
     const data = await response.json();

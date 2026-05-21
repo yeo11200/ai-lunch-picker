@@ -54,12 +54,17 @@ const handleBuildRuleBasedReason = (candidate: RestaurantCandidate) => {
 
 interface GenerateOptions {
   force?: boolean;
+  requestedByName?: string;
 }
 
 // 같은 sessionId 의 추천 생성이 동시에 호출되면 두 번째는 진행 중인 promise 결과를 share.
 // Vercel timeout 후 사용자가 새로고침/재클릭해도 중복 INSERT 가 안 일어나게 함.
 const inflightBySession = new Map<string, Promise<RecommendationResponse>>();
 const RECOMMENDATION_DEADLINE_MS = 50_000;
+
+const handleGetRerollAdminName = () => {
+  return (process.env.REROLL_ADMIN_NAME || process.env.NEXT_PUBLIC_REROLL_ADMIN_NAME || 'admin').trim();
+};
 
 const handleSelectExisting = (sessionId: string, existing: RestaurantCandidate[]): RecommendationResponse => {
   return {
@@ -112,6 +117,10 @@ const handleGenerateRecommendationsInternal = async (
   }
 
   if (options.force) {
+    if ((options.requestedByName ?? '').trim() !== handleGetRerollAdminName()) {
+      throw new Error('관리자 이름으로 입력한 사용자만 다시 추천할 수 있습니다.');
+    }
+
     if (session.status === 'revealed') {
       throw new Error('이미 결과가 공개된 세션은 다시 추천할 수 없습니다.');
     }

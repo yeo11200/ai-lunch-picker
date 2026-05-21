@@ -15,8 +15,12 @@ export const useRecommendations = (sessionId: string | null) => {
     staleTime: 60_000,
   });
   const createRecommendationsMutation = useMutation({
-    mutationFn: (input?: { sessionId?: string; force?: boolean }) =>
-      lunchApi.handleCreateRecommendations(input?.sessionId ?? sessionId ?? '', input?.force ?? false),
+    mutationFn: (input?: { sessionId?: string; force?: boolean; requestedByName?: string }) =>
+      lunchApi.handleCreateRecommendations(
+        input?.sessionId ?? sessionId ?? '',
+        input?.force ?? false,
+        input?.requestedByName ?? '',
+      ),
     onSuccess: (data) => {
       queryClient.setQueryData(['recommendations', data.sessionId], {
         recommendations: data.recommendations,

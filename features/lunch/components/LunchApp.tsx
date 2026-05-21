@@ -14,6 +14,7 @@ import type { RestaurantCandidate } from '../types/lunch.types';
 
 const USER_ID_KEY = 'ai-lunch-picker-user-id';
 const USER_NAME_KEY = 'ai-lunch-picker-user-name';
+const REROLL_ADMIN_NAME = process.env.NEXT_PUBLIC_REROLL_ADMIN_NAME?.trim() || 'admin';
 
 const handleCreateUserId = () => {
   return crypto.randomUUID();
@@ -54,10 +55,12 @@ export function LunchApp() {
   }, [recommendationsQuery.data?.browseCandidates]);
   const voteState = voteQuery.data ?? null;
   const myRestaurantId = voteState?.myVote?.restaurantId ?? null;
+  const isRerollAdmin = userName.trim() === REROLL_ADMIN_NAME;
   const canVote = Boolean(userId && userName.trim() && sessionId && candidates.length > 0 && !voteState?.isRevealed);
   const canRefreshRecommendations = Boolean(
     sessionId &&
       candidates.length > 0 &&
+      isRerollAdmin &&
       !createRecommendationsMutation.isPending &&
       !voteState?.isRevealed &&
       (voteState?.totalVoteCount ?? 0) === 0,
@@ -108,7 +111,11 @@ export function LunchApp() {
       return;
     }
 
-    const result = await createRecommendationsMutation.mutateAsync({ sessionId, force: true });
+    const result = await createRecommendationsMutation.mutateAsync({
+      sessionId,
+      force: true,
+      requestedByName: userName.trim(),
+    });
     setStickyRecs(result.recommendations);
     setStickyBrowse(result.browseCandidates);
     setMessages(result.messages);
@@ -160,15 +167,14 @@ export function LunchApp() {
                 disabled={!canRefreshRecommendations}
                 onClick={handleForceRefresh}
                 title={
-                  (voteState?.totalVoteCount ?? 0) > 0
+                  !isRerollAdmin
+                    ? `투표자 이름이 ${REROLL_ADMIN_NAME}일 때만 다시 추천할 수 있습니다.`
+                    : (voteState?.totalVoteCount ?? 0) > 0
                     ? '투표가 시작된 뒤에는 추천 후보를 바꿀 수 없습니다.'
                     : '기존 추천을 지우고 새로 뽑습니다'
                 }
               >
                 다시 추천 뽑기
-              </button>
-              <button className="button secondary" disabled={recommendationsQuery.isFetching} onClick={() => recommendationsQuery.refetch()}>
-                진행 중 투표 보기
               </button>
             </div>
             {candidates.length > 0 ? (
